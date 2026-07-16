@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0D0D1A"
+    android:padding="32dp">
+
+    <TextView
+        android:id="@+id/tvResultTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFD700"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        android:paddingBottom="16dp"/>
+
+    <LinearLayout
+        android:id="@+id/resultStarRow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="16dp"/>
+
+    <TextView
+        android:id="@+id/tvResultScore"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:paddingBottom="32dp"/>
+
+    <Button
+        android:id="@+id/btnNextLevel"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:text="Next Level"
+        android:layout_marginBottom="12dp"/>
+
+    <Button
+        android:id="@+id/btnRetry"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:text="Retry"
+        android:layout_marginBottom="12dp"/>
+
+    <Button
+        android:id="@+id/btnMenu"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:text="Level Select"/>
+</LinearLayout>

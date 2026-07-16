@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.hackyboy.miniballgame" >
+    package="com.hackyboy.miniballgame">
 
     <application
         android:allowBackup="true"
@@ -10,23 +10,31 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BrickBreaker">
 
+        <!-- Home/Splash -->
         <activity
             android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="portrait">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- Level Selection Grid -->
+        <activity
+            android:name=".LevelSelectActivity"
+            android:exported="false"/>
+
+        <!-- Gameplay -->
         <activity
             android:name=".GameActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:configChanges="keyboardHidden|orientation|screenSize" />
 
+        <!-- Star Result Screen -->
+        <activity
+            android:name=".LevelResultActivity"
+            android:exported="false"/>
+
     </application>
-
-
 </manifest>

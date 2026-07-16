@@ -20,6 +20,6 @@ public class MainActivity extends AppCompatActivity {
 
         Button btnPlay = findViewById(R.id.btnPlay);
         btnPlay.setOnClickListener(v ->
-                startActivity(new Intent(this, GameActivity.class)));
+                startActivity(new Intent(this, LevelSelectActivity.class)));
     }
 }

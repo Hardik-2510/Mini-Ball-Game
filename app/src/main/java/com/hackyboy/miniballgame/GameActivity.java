@@ -1,5 +1,7 @@
+// app/src/main/java/com/hackyboy/miniballgame/GameActivity.java
 package com.hackyboy.miniballgame;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.Window;
 import android.view.WindowManager;
@@ -18,13 +20,13 @@ public class GameActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        gameView = new GameView(this);
+        // Get level number from Intent (default = 1)
+        int levelNumber = getIntent().getIntExtra("LEVEL_NUMBER", 1);
+
+        gameView = new GameView(this, levelNumber);
         setContentView(gameView);
     }
 
-    @Override
-    protected void onPause()  { super.onPause();  }
-
-    @Override
-    protected void onResume() { super.onResume(); }
+    @Override protected void onPause()  { super.onPause(); }
+    @Override protected void onResume() { super.onResume(); }
 }
