@@ -1,4 +1,5 @@
-package com.hackyboy.miniballgame;
+
+        package com.hackyboy.miniballgame;
 
 import android.app.Activity;
 import android.content.Context;
@@ -19,18 +20,18 @@ import java.util.Random;
 public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
     // ── Objects ──────────────────────────────────────────────────
-    private Ball         ball;
-    private Paddle       paddle;
-    private List<Brick>  bricks;
-    private GameManager  gm;
-    private GameThread   gameThread;
+    private Ball        ball;
+    private Paddle      paddle;
+    private List<Brick> bricks;
+    private GameManager gm;
+    private GameThread  gameThread;
     private final Random rng = new Random();
 
     // ── Screen ───────────────────────────────────────────────────
     private int screenW, screenH;
     private static final int HUD_H = 120;
 
-    // ── Level number passed from GameActivity via Intent ─────────
+    // ── Level number passed from GameActivity ────────────────────
     private int levelNumber;
 
     // ── Input / State ────────────────────────────────────────────
@@ -51,20 +52,21 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private final Paint accentPaint  = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint hintPaint    = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint lifePaint    = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint starPaint    = new Paint(Paint.ANTI_ALIAS_FLAG); // NEW: for star rating
+    private final Paint starPaint    = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    // ── NEW Constructor: accepts levelNumber from GameActivity ────
+    // ── Constructor ──────────────────────────────────────────────
     public GameView(Context ctx, int levelNumber) {
         super(ctx);
         this.levelNumber = levelNumber;
         getHolder().addCallback(this);
         setFocusable(true);
         gm     = new GameManager();
-        gm.setupLevel(levelNumber);   // use per-level setup instead of reset()
+        gm.setupLevel(levelNumber);
         bricks = new ArrayList<>();
         setupPaints();
     }
 
+    // ── Paint Setup ──────────────────────────────────────────────
     private void setupPaints() {
         bgPaint.setColor(0xFF0D0D1A);
 
@@ -98,7 +100,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
         lifePaint.setAntiAlias(true);
 
-        // Star paint setup
         starPaint.setTextAlign(Paint.Align.CENTER);
         starPaint.setTextSize(72f);
         starPaint.setFakeBoldText(true);
@@ -113,7 +114,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
         paddle = new Paddle(screenW, screenH);
         ball   = new Ball(screenW / 2f, paddle.y - 30f, gm.ballSpeed);
-        generateBricks();
+        generateBricks(); // ← also caps targetScore after generation
 
         gameThread = new GameThread(getHolder(), this);
         gameThread.setRunning(true);
@@ -133,6 +134,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     // ── Brick Generation ─────────────────────────────────────────
+    /**
+     * Generates bricks for the current level.
+     *
+     * FIX: Each Brick now receives gm.currentLevel so it can scale
+     * its point value accordingly (higher levels = higher-value bricks).
+     *
+     * After generation, capTargetToMaxPossible() ensures the target
+     * score never exceeds 75% of the total points on screen, making
+     * every level always winnable regardless of RNG brick count.
+     */
     private void generateBricks() {
         bricks.clear();
         int   maxRows = Math.min(4 + gm.currentLevel, 10);
@@ -146,9 +157,39 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
             for (int col = 0; col < cols; col++) {
                 float bx = pad + col * (brickW + pad);
-                bricks.add(new Brick(bx, curY, brickW, rowH, rng));
+                // FIX: pass gm.currentLevel so Brick scales its points
+                bricks.add(new Brick(bx, curY, brickW, rowH, rng, gm.currentLevel));
             }
             curY += rowH + pad;
+        }
+
+        // FIX: After bricks are placed, cap target to what's actually reachable
+        capTargetToMaxPossible();
+    }
+
+    /**
+     * FIX: Computes the sum of ALL brick points on screen (i.e., the maximum
+     * score the player can ever earn this level), then caps gm.targetScore to
+     * 75% of that value.
+     *
+     * Why 75%? The player must destroy most — but not necessarily every — brick.
+     * This preserves challenge while guaranteeing the level is always beatable.
+     *
+     * Example — Level 1 worst case without fix:
+     *   15 bricks × 10 pts = 150 pts max  vs  500 pts target  → IMPOSSIBLE ❌
+     *
+     * Example — Level 1 worst case WITH fix:
+     *   targetScore = min(500, 150 × 0.75) = min(500, 112) = 112 pts  → WINNABLE ✅
+     */
+    private void capTargetToMaxPossible() {
+        int totalMaxScore = 0;
+        for (Brick b : bricks) {
+            totalMaxScore += b.points;
+        }
+        // Cap: target must not exceed 75% of total possible score
+        int cap = (int)(totalMaxScore * 0.75f);
+        if (gm.targetScore > cap) {
+            gm.targetScore = cap;
         }
     }
 
@@ -194,7 +235,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         // Paddle collision
         RectF pb = paddle.getBounds(), bb = ball.getBounds();
         if (ball.velocityY > 0 && RectF.intersects(bb, pb)) {
-            float hit = (ball.x - paddle.x) / paddle.width;   // 0..1
+            float hit = (ball.x - paddle.x) / paddle.width; // 0..1
             ball.velocityX = gm.ballSpeed * 1.6f * (hit - 0.5f);
             ball.velocityY = -gm.ballSpeed;
             if (Math.abs(ball.velocityX) < 2.5f)
@@ -216,8 +257,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
             // Overlap-based bounce
             bb = ball.getBounds();
-            float oL = bb.right  - brb.left,  oR = brb.right  - bb.left;
-            float oT = bb.bottom - brb.top,   oB = brb.bottom - bb.top;
+            float oL = bb.right  - brb.left, oR = brb.right  - bb.left;
+            float oT = bb.bottom - brb.top,  oB = brb.bottom - bb.top;
             if (Math.min(oL, oR) < Math.min(oT, oB))
                 ball.velocityX = (oL < oR) ? -Math.abs(ball.velocityX) : Math.abs(ball.velocityX);
             else
@@ -310,16 +351,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     // ── Overlays ─────────────────────────────────────────────────
-
-    /**
-     * NEW: Draws stars (★ filled / ☆ empty) on the Level Complete overlay.
-     * Uses Unicode text characters — no image assets needed.
-     *
-     * Positions 3 stars centered horizontally at the given Y.
-     */
     private void drawStarRating(Canvas canvas, int starsEarned, float centerY) {
         float spacing = 90f;
-        float startX  = screenW / 2f - spacing; // center of first star
+        float startX  = screenW / 2f - spacing;
 
         for (int i = 1; i <= 3; i++) {
             starPaint.setColor(i <= starsEarned ? 0xFFFFD700 : 0x55FFFFFF);
@@ -328,24 +362,17 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         }
     }
 
-    /**
-     * MODIFIED: Now shows star rating on the Level Complete screen.
-     * Stars are calculated from gm.calculateStars() which reads livesLostThisLevel.
-     */
     private void drawLevelComplete(Canvas canvas) {
         canvas.drawRect(0, 0, screenW, screenH, overlayPaint);
 
         float cy = screenH / 2f;
         int starsEarned = gm.calculateStars();
 
-        // Title
         titlePaint.setColor(0xFF00FF88);
         canvas.drawText("LEVEL CLEAR!", screenW / 2f, cy - 160f, titlePaint);
 
-        // Star rating
         drawStarRating(canvas, starsEarned, cy - 60f);
 
-        // Star label text
         accentPaint.setColor(0xFFFFD700);
         accentPaint.setTextSize(38f);
         String starLabel;
@@ -356,20 +383,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         }
         canvas.drawText(starLabel, screenW / 2f, cy + 10f, accentPaint);
 
-        // Score
         accentPaint.setColor(Color.WHITE);
         accentPaint.setTextSize(36f);
         canvas.drawText("Score: " + gm.currentScore, screenW / 2f, cy + 70f, accentPaint);
 
-        // Hint
-        accentPaint.setTextSize(46f);
         canvas.drawText("Tap to continue →", screenW / 2f, cy + 150f, hintPaint);
     }
 
-    /**
-     * MODIFIED: GAME OVER now shows "Tap to retry" instead of resetting the
-     * whole game — it restarts the current level only.
-     */
     private void drawGameOver(Canvas canvas) {
         canvas.drawRect(0, 0, screenW, screenH, overlayPaint);
 
@@ -388,7 +408,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         canvas.drawText("Tap to retry level", screenW / 2f, cy + 170f, hintPaint);
     }
 
-    // ── Touch ─────────────────────────────────────────────────────
+    // ── Touch ────────────────────────────────────────────────────
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         int action = e.getActionMasked();
@@ -407,27 +427,17 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
             return true;
         }
 
-        // Launch ball on first tap during PLAYING
         if (!ballLaunched) ballLaunched = true;
         return true;
     }
 
-    // ── NEW: Level Complete handler ───────────────────────────────
-    /**
-     * Called when the player taps on the LEVEL_COMPLETE overlay.
-     *
-     * 1. Calculates stars from lives lost this level.
-     * 2. Saves progress (stars + unlock next level) via LevelProgressManager.
-     * 3. Launches LevelResultActivity with results, then finishes GameActivity.
-     */
+    // ── Level Complete Handler ────────────────────────────────────
     private void handleLevelCompleteTap() {
         int starsEarned = gm.calculateStars();
 
-        // Persist progress
         LevelProgressManager pm = new LevelProgressManager(getContext());
         pm.saveLevelResult(levelNumber, starsEarned);
 
-        // Go to result screen
         Intent intent = new Intent(getContext(), LevelResultActivity.class);
         intent.putExtra("LEVEL_NUMBER", levelNumber);
         intent.putExtra("STARS_EARNED", starsEarned);
@@ -437,17 +447,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         ((Activity) getContext()).finish();
     }
 
-    // ── NEW: Game Over handler ────────────────────────────────────
-    /**
-     * Called when the player taps on the GAME_OVER overlay.
-     *
-     * Restarts the SAME level (not the whole game).
-     * GameActivity receives LEVEL_NUMBER and calls gm.setupLevel() again.
-     */
+    // ── Game Over Handler ─────────────────────────────────────────
     private void handleGameOverTap() {
         Intent intent = new Intent(getContext(), GameActivity.class);
         intent.putExtra("LEVEL_NUMBER", levelNumber);
-        // Clear the back stack so pressing Back doesn't return to a dead game
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         ((Activity) getContext()).startActivity(intent);
         ((Activity) getContext()).finish();
