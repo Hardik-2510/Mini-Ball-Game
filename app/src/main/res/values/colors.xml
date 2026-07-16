@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#006699</color>
+    <color name="colorPrimaryVariant">#004466</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <color name="colorSecondary">#00D4FF</color>
+    <color name="colorOnSecondary">#000000</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="gameBg">#0D0D1A</color>
+    <color name="accent">#00D4FF</color>
+</resources>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0D0D1A">
+
+    <!-- Glowing title -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="BRICK"
+        android:textColor="#00D4FF"
+        android:textSize="72sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.2"
+        android:layout_marginBottom="0dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="BREAKER"
+        android:textColor="#FFFFFF"
+        android:textSize="46sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.3"
+        android:layout_marginBottom="16dp"/>
+
+    <View
+        android:layout_width="180dp"
+        android:layout_height="2dp"
+        android:background="#0088CC"
+        android:layout_marginBottom="24dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Smash bricks · Score points · Level up"
+        android:textColor="#99AAAACC"
+        android:textSize="16sp"
+        android:layout_marginBottom="72dp"/>
+
+    <Button
+        android:id="@+id/btnPlay"
+        android:layout_width="220dp"
+        android:layout_height="60dp"
+        android:text="▶  PLAY"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="#0D0D1A"
+        android:backgroundTint="#00D4FF"
+        android:stateListAnimator="@null"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Slide to move · Tap to launch"
+        android:textColor="#556688AA"
+        android:textSize="13sp"
+        android:layout_marginTop="28dp"/>
+
+</LinearLayout>
