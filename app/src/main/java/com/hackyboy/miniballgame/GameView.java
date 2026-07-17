@@ -1,5 +1,4 @@
-
-        package com.hackyboy.miniballgame;
+package com.hackyboy.miniballgame;
 
 import android.app.Activity;
 import android.content.Context;
@@ -31,15 +30,20 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private int screenW, screenH;
     private static final int HUD_H = 120;
 
-    // ── Level number passed from GameActivity ────────────────────
+    // ── Level number ─────────────────────────────────────────────
     private int levelNumber;
 
     // ── Input / State ────────────────────────────────────────────
     private volatile float   touchX;
     private volatile boolean ballLaunched = false;
 
-    private enum State { PLAYING, LEVEL_COMPLETE, GAME_OVER }
+    // FIX: Added PAUSED state to the existing enum
+    private enum State { PLAYING, PAUSED, LEVEL_COMPLETE, GAME_OVER }
     private volatile State state = State.PLAYING;
+
+    // FIX: Hit-test rectangles for the pause overlay buttons (set in drawPauseOverlay)
+    private RectF pauseResumeRect = new RectF();
+    private RectF pauseMenuRect   = new RectF();
 
     // ── Paints ───────────────────────────────────────────────────
     private final Paint bgPaint      = new Paint();
@@ -53,6 +57,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private final Paint hintPaint    = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint lifePaint    = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint starPaint    = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    // FIX: Extra paints used only by the pause overlay buttons
+    private final Paint btnFillPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint btnBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint btnTextPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     // ── Constructor ──────────────────────────────────────────────
     public GameView(Context ctx, int levelNumber) {
@@ -103,6 +112,18 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         starPaint.setTextAlign(Paint.Align.CENTER);
         starPaint.setTextSize(72f);
         starPaint.setFakeBoldText(true);
+
+        // Pause overlay button paints
+        btnFillPaint.setStyle(Paint.Style.FILL);
+
+        btnBorderPaint.setStyle(Paint.Style.STROKE);
+        btnBorderPaint.setStrokeWidth(2f);
+
+        btnTextPaint.setColor(Color.WHITE);
+        btnTextPaint.setTextAlign(Paint.Align.CENTER);
+        btnTextPaint.setFakeBoldText(true);
+        btnTextPaint.setTextSize(42f);
+        btnTextPaint.setAntiAlias(true);
     }
 
     // ── Surface Callbacks ────────────────────────────────────────
@@ -114,7 +135,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
         paddle = new Paddle(screenW, screenH);
         ball   = new Ball(screenW / 2f, paddle.y - 30f, gm.ballSpeed);
-        generateBricks(); // ← also caps targetScore after generation
+        generateBricks();
 
         gameThread = new GameThread(getHolder(), this);
         gameThread.setRunning(true);
@@ -134,16 +155,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     // ── Brick Generation ─────────────────────────────────────────
-    /**
-     * Generates bricks for the current level.
-     *
-     * FIX: Each Brick now receives gm.currentLevel so it can scale
-     * its point value accordingly (higher levels = higher-value bricks).
-     *
-     * After generation, capTargetToMaxPossible() ensures the target
-     * score never exceeds 75% of the total points on screen, making
-     * every level always winnable regardless of RNG brick count.
-     */
     private void generateBricks() {
         bricks.clear();
         int   maxRows = Math.min(4 + gm.currentLevel, 10);
@@ -151,50 +162,86 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         float curY    = HUD_H + 18f;
 
         for (int row = 0; row < maxRows; row++) {
-            int   cols   = 3 + rng.nextInt(4);          // 3–6 cols
-            float rowH   = 28f + rng.nextInt(26);        // 28–53 px
+            int   cols   = 3 + rng.nextInt(4);
+            float rowH   = 28f + rng.nextInt(26);
             float brickW = (screenW - pad * (cols + 1)) / cols;
 
             for (int col = 0; col < cols; col++) {
                 float bx = pad + col * (brickW + pad);
-                // FIX: pass gm.currentLevel so Brick scales its points
                 bricks.add(new Brick(bx, curY, brickW, rowH, rng, gm.currentLevel));
             }
             curY += rowH + pad;
         }
-
-        // FIX: After bricks are placed, cap target to what's actually reachable
         capTargetToMaxPossible();
     }
 
-    /**
-     * FIX: Computes the sum of ALL brick points on screen (i.e., the maximum
-     * score the player can ever earn this level), then caps gm.targetScore to
-     * 75% of that value.
-     *
-     * Why 75%? The player must destroy most — but not necessarily every — brick.
-     * This preserves challenge while guaranteeing the level is always beatable.
-     *
-     * Example — Level 1 worst case without fix:
-     *   15 bricks × 10 pts = 150 pts max  vs  500 pts target  → IMPOSSIBLE ❌
-     *
-     * Example — Level 1 worst case WITH fix:
-     *   targetScore = min(500, 150 × 0.75) = min(500, 112) = 112 pts  → WINNABLE ✅
-     */
     private void capTargetToMaxPossible() {
         int totalMaxScore = 0;
-        for (Brick b : bricks) {
-            totalMaxScore += b.points;
-        }
-        // Cap: target must not exceed 75% of total possible score
+        for (Brick b : bricks) totalMaxScore += b.points;
         int cap = (int)(totalMaxScore * 0.75f);
-        if (gm.targetScore > cap) {
-            gm.targetScore = cap;
+        if (gm.targetScore > cap) gm.targetScore = cap;
+    }
+
+    // ── Pause / Resume (called from GameActivity) ─────────────────
+
+    /**
+     * FIX: Called by GameActivity.onBackPressed() and dispatchKeyEvent().
+     *
+     * Behaviour per state:
+     *   PLAYING        → pause the game (show pause overlay)
+     *   PAUSED         → resume the game (back acts as toggle)
+     *   LEVEL_COMPLETE → go to LevelSelectActivity (level is already saved)
+     *   GAME_OVER      → go to LevelSelectActivity
+     */
+    public void handleBackPress() {
+        switch (state) {
+            case PLAYING:
+                pauseGame();
+                break;
+            case PAUSED:
+                resumeGame();
+                break;
+            case LEVEL_COMPLETE:
+            case GAME_OVER:
+                goToLevelSelect();
+                break;
         }
+    }
+
+    /**
+     * FIX: Pauses the game loop. Safe to call from any thread.
+     * Sets state to PAUSED so update() becomes a no-op and render()
+     * draws the pause overlay instead of the live game frame.
+     */
+    public void pauseGame() {
+        if (state == State.PLAYING) {
+            state = State.PAUSED;
+        }
+    }
+
+    /**
+     * FIX: Resumes from PAUSED back to PLAYING.
+     */
+    public void resumeGame() {
+        if (state == State.PAUSED) {
+            state = State.PLAYING;
+        }
+    }
+
+    /**
+     * FIX: Navigates to LevelSelectActivity, clearing the back stack so the
+     * user can't accidentally return to a dead GameActivity via the back button.
+     */
+    private void goToLevelSelect() {
+        Intent intent = new Intent(getContext(), LevelSelectActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        ((Activity) getContext()).startActivity(intent);
+        ((Activity) getContext()).finish();
     }
 
     // ── Update ───────────────────────────────────────────────────
     public void update() {
+        // FIX: PAUSED is a no-op — ball, paddle, bricks all freeze
         if (state != State.PLAYING) return;
 
         paddle.setPosition(touchX);
@@ -221,7 +268,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
             ball.velocityY = Math.abs(ball.velocityY);
         }
 
-        // Ball lost (fell below screen)
+        // Ball lost
         if (ball.y - ball.radius > screenH) {
             ballLaunched = false;
             if (gm.loseLife()) {
@@ -235,7 +282,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         // Paddle collision
         RectF pb = paddle.getBounds(), bb = ball.getBounds();
         if (ball.velocityY > 0 && RectF.intersects(bb, pb)) {
-            float hit = (ball.x - paddle.x) / paddle.width; // 0..1
+            float hit = (ball.x - paddle.x) / paddle.width;
             ball.velocityX = gm.ballSpeed * 1.6f * (hit - 0.5f);
             ball.velocityY = -gm.ballSpeed;
             if (Math.abs(ball.velocityX) < 2.5f)
@@ -255,7 +302,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                 return;
             }
 
-            // Overlap-based bounce
             bb = ball.getBounds();
             float oL = bb.right  - brb.left, oR = brb.right  - bb.left;
             float oT = bb.bottom - brb.top,  oB = brb.bottom - bb.top;
@@ -287,6 +333,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         if (!ballLaunched && state == State.PLAYING)
             canvas.drawText("TAP TO LAUNCH", screenW / 2f, paddle.y - 55f, hintPaint);
 
+        // FIX: draw pause overlay when paused
+        if (state == State.PAUSED)         drawPauseOverlay(canvas);
         if (state == State.LEVEL_COMPLETE) drawLevelComplete(canvas);
         if (state == State.GAME_OVER)      drawGameOver(canvas);
     }
@@ -299,7 +347,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         float cx   = screenW / 2f;
         float col2 = screenW * 0.73f;
 
-        // Labels
         labelPaint.setTextAlign(Paint.Align.LEFT);
         canvas.drawText("SCORE", 18, 34, labelPaint);
         labelPaint.setTextAlign(Paint.Align.CENTER);
@@ -307,17 +354,43 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         labelPaint.setTextAlign(Paint.Align.LEFT);
         canvas.drawText("LIVES", col2, 34, labelPaint);
 
-        // Values
         valuePaint.setTextAlign(Paint.Align.LEFT);
         canvas.drawText(String.valueOf(gm.currentScore), 18, 80, valuePaint);
         valuePaint.setTextAlign(Paint.Align.CENTER);
         canvas.drawText(String.valueOf(gm.currentLevel), cx, 80, valuePaint);
 
-        // Life dots
         drawLives(canvas, col2, 68f);
-
-        // Progress bar
         drawProgressBar(canvas);
+
+        // FIX: Draw a ❚❚ pause icon button in the top-right corner of the HUD
+        // so the user always has a visible way to pause without the back button
+        drawPauseButton(canvas);
+    }
+
+    /**
+     * FIX: Small pause icon (❚❚) drawn in the HUD top-right corner.
+     * Tap area is 60×60dp so it's easy to hit during gameplay.
+     * This gives users a VISIBLE in-game control — no hunting for a back button.
+     */
+    private void drawPauseButton(Canvas canvas) {
+        float size  = 60f;
+        float right = screenW - 14f;
+        float top   = 10f;
+
+        // Tappable background (subtle so it doesn't distract during play)
+        Paint tapBg = new Paint(Paint.ANTI_ALIAS_FLAG);
+        tapBg.setColor(0x33FFFFFF);
+        canvas.drawRoundRect(new RectF(right - size, top, right, top + size), 10, 10, tapBg);
+
+        // Two pause bars: ❚❚
+        Paint bar = new Paint(Paint.ANTI_ALIAS_FLAG);
+        bar.setColor(Color.WHITE);
+        float bx = right - size + 16f;
+        float by = top + 14f;
+        float bw = 10f;
+        float bh = 32f;
+        canvas.drawRoundRect(new RectF(bx,      by, bx + bw,      by + bh), 3, 3, bar);
+        canvas.drawRoundRect(new RectF(bx + 18f, by, bx + 18f + bw, by + bh), 3, 3, bar);
     }
 
     private void drawLives(Canvas canvas, float startX, float cy) {
@@ -342,7 +415,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
             canvas.drawRoundRect(new RectF(bx, by, bx + bw * pct, by + bh), 5, 5, fill);
         }
 
-        // Target label
         hintPaint.setTextAlign(Paint.Align.RIGHT);
         hintPaint.setTextSize(20f);
         canvas.drawText("TARGET " + gm.targetScore, screenW - 18f, by - 4f, hintPaint);
@@ -350,11 +422,88 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         hintPaint.setTextSize(34f);
     }
 
-    // ── Overlays ─────────────────────────────────────────────────
+    // ── Pause Overlay ─────────────────────────────────────────────
+
+    /**
+     * FIX: Full pause overlay drawn over the frozen game frame.
+     *
+     * Shows:
+     *   - "PAUSED" title
+     *   - Current level + score info
+     *   - [▶ RESUME]  button  — resumes gameplay
+     *   - [⌂ MENU]   button  — exits to LevelSelectActivity
+     *
+     * Button RectF coordinates are stored in pauseResumeRect / pauseMenuRect
+     * so onTouchEvent() can hit-test them accurately.
+     */
+    private void drawPauseOverlay(Canvas canvas) {
+        // Dim background
+        canvas.drawRect(0, 0, screenW, screenH, overlayPaint);
+
+        float cx = screenW / 2f;
+        float cy = screenH / 2f;
+
+        // Title
+        titlePaint.setColor(0xFF00D4FF);
+        canvas.drawText("PAUSED", cx, cy - 180f, titlePaint);
+
+        // Level & score info
+        accentPaint.setColor(0xAAFFFFFF);
+        accentPaint.setTextSize(34f);
+        canvas.drawText("Level " + gm.currentLevel
+                        + "   Score: " + gm.currentScore
+                        + " / " + gm.targetScore,
+                cx, cy - 100f, accentPaint);
+
+        // Lives remaining
+        float lifeX = cx - 36f;
+        float lifeY = cy - 55f;
+        Paint lp = new Paint(Paint.ANTI_ALIAS_FLAG);
+        for (int i = 0; i < 3; i++) {
+            lp.setColor(i < gm.lives ? 0xFFFF4455 : 0x33FFFFFF);
+            canvas.drawCircle(lifeX + i * 30f, lifeY, 10f, lp);
+        }
+
+        // Button dimensions
+        float btnW  = screenW * 0.68f;
+        float btnH  = 110f;
+        float btnL  = cx - btnW / 2f;
+        float gap   = 28f;
+
+        // ── RESUME button ──────────────────────────────────────
+        float resumeTop = cy;
+        pauseResumeRect.set(btnL, resumeTop, btnL + btnW, resumeTop + btnH);
+
+        btnFillPaint.setColor(0xFF00AA55);
+        canvas.drawRoundRect(pauseResumeRect, 18, 18, btnFillPaint);
+        btnBorderPaint.setColor(0xFF00FF88);
+        canvas.drawRoundRect(pauseResumeRect, 18, 18, btnBorderPaint);
+        canvas.drawText("▶  RESUME", cx,
+                resumeTop + btnH / 2f + btnTextPaint.getTextSize() * 0.38f,
+                btnTextPaint);
+
+        // ── MENU button ────────────────────────────────────────
+        float menuTop = resumeTop + btnH + gap;
+        pauseMenuRect.set(btnL, menuTop, btnL + btnW, menuTop + btnH);
+
+        btnFillPaint.setColor(0xFF1A1A3A);
+        canvas.drawRoundRect(pauseMenuRect, 18, 18, btnFillPaint);
+        btnBorderPaint.setColor(0xFF00D4FF);
+        canvas.drawRoundRect(pauseMenuRect, 18, 18, btnBorderPaint);
+        canvas.drawText("⌂  LEVEL SELECT", cx,
+                menuTop + btnH / 2f + btnTextPaint.getTextSize() * 0.38f,
+                btnTextPaint);
+
+        // Hint at the bottom
+        hintPaint.setTextSize(28f);
+        canvas.drawText("Back  →  Resume", cx, menuTop + btnH + 55f, hintPaint);
+        hintPaint.setTextSize(34f);
+    }
+
+    // ── Overlays (Level Complete / Game Over) ─────────────────────
     private void drawStarRating(Canvas canvas, int starsEarned, float centerY) {
         float spacing = 90f;
         float startX  = screenW / 2f - spacing;
-
         for (int i = 1; i <= 3; i++) {
             starPaint.setColor(i <= starsEarned ? 0xFFFFD700 : 0x55FFFFFF);
             canvas.drawText(i <= starsEarned ? "★" : "☆",
@@ -386,7 +535,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         accentPaint.setColor(Color.WHITE);
         accentPaint.setTextSize(36f);
         canvas.drawText("Score: " + gm.currentScore, screenW / 2f, cy + 70f, accentPaint);
-
         canvas.drawText("Tap to continue →", screenW / 2f, cy + 150f, hintPaint);
     }
 
@@ -404,7 +552,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         accentPaint.setTextSize(34f);
         canvas.drawText("Level: "  + gm.currentLevel, screenW / 2f, cy + 50f,  accentPaint);
         canvas.drawText("Target: " + gm.targetScore,  screenW / 2f, cy + 100f, accentPaint);
-
         canvas.drawText("Tap to retry level", screenW / 2f, cy + 170f, hintPaint);
     }
 
@@ -415,18 +562,49 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         if (action != MotionEvent.ACTION_DOWN && action != MotionEvent.ACTION_MOVE)
             return true;
 
-        touchX = e.getX();
+        float tx = e.getX();
+        float ty = e.getY();
+        touchX = tx;
 
+        // ── PAUSED state: only handle button taps ─────────────
+        if (state == State.PAUSED) {
+            // Only react on DOWN so buttons don't double-fire on MOVE
+            if (action == MotionEvent.ACTION_DOWN) {
+                if (pauseResumeRect.contains(tx, ty)) {
+                    resumeGame();
+                } else if (pauseMenuRect.contains(tx, ty)) {
+                    goToLevelSelect();
+                }
+                // Tapping anywhere else while paused does nothing
+            }
+            return true;
+        }
+
+        // ── HUD pause button (top-right) ──────────────────────
+        // Hit area mirrors drawPauseButton(): right 60×60 zone of HUD
+        if (action == MotionEvent.ACTION_DOWN && state == State.PLAYING) {
+            float btnRight = screenW - 14f;
+            float btnTop   = 10f;
+            float btnSize  = 60f;
+            if (tx >= btnRight - btnSize && tx <= btnRight
+                    && ty >= btnTop && ty <= btnTop + btnSize) {
+                pauseGame();
+                return true;
+            }
+        }
+
+        // ── Other states ──────────────────────────────────────
         if (state == State.LEVEL_COMPLETE) {
-            handleLevelCompleteTap();
+            if (action == MotionEvent.ACTION_DOWN) handleLevelCompleteTap();
             return true;
         }
 
         if (state == State.GAME_OVER) {
-            handleGameOverTap();
+            if (action == MotionEvent.ACTION_DOWN) handleGameOverTap();
             return true;
         }
 
+        // ── PLAYING: launch ball on first tap ─────────────────
         if (!ballLaunched) ballLaunched = true;
         return true;
     }
