@@ -1,5 +1,6 @@
 package com.hackyboy.miniballgame;
 
+
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -13,31 +14,23 @@ public class Brick {
     public int points;
     public boolean isDestroyed = false;
 
-    private final Paint fillPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint fillPaint  = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint textPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint textPaint  = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private static final int[] COLORS = {
             0xFFE74C3C, 0xFF27AE60, 0xFF2980B9,
             0xFFF39C12, 0xFF8E44AD, 0xFF16A085,
             0xFFE91E63, 0xFFFF5722, 0xFF00BCD4
     };
+    private static final int[] POINT_VALUES = {10, 15, 20, 25, 30};
 
-    // ✅ FIX: Constructor now accepts level to scale points accordingly
-    public Brick(float x, float y, float width, float height, Random rng, int level) {
+    public Brick(float x, float y, float width, float height, Random rng) {
         this.x = x;  this.y = y;
         this.width = width; this.height = height;
 
-        int color = COLORS[rng.nextInt(COLORS.length)];
-
-        // Points scale with level:
-        //   Level 1 → 10–30 pts  (basePoints=10, bonus 0/5/10/15/20)
-        //   Level 2 → 15–35 pts
-        //   Level 5 → 30–50 pts
-        //   Level 10 → 55–75 pts
-        // This ensures later levels have enough point potential
-        int basePoints = 10 + (level - 1) * 5;
-        this.points = basePoints + rng.nextInt(5) * 5;
+        int color  = COLORS[rng.nextInt(COLORS.length)];
+        this.points = POINT_VALUES[rng.nextInt(POINT_VALUES.length)];
 
         fillPaint.setShader(new LinearGradient(
                 x, y, x, y + height,
